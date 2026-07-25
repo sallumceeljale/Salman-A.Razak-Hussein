@@ -1,0 +1,168 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Default catch-all deny rule
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Helper: Checks if user is signed in
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    // Helper: Validates a generic ID format
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    // Helper: Shortcut for incoming document data
+    function incoming() {
+      return request.resource.data;
+    }
+
+    // Helper: Shortcut for existing document data
+    function existing() {
+      return resource.data;
+    }
+
+    // Helper: Check if incoming data has exactly specified keys
+    function hasExactKeys(data, reqKeys, expectedSize) {
+      return data.keys().hasAll(reqKeys) && data.keys().size() == expectedSize;
+    }
+
+    // Helper: Validation blueprint for Posts
+    function isValidPost(data) {
+      return hasExactKeys(data, ['authorName', 'authorUID', 'authorPhotoUrl', 'message', 'category', 'createdAt', 'likesCount', 'likes'], 8) &&
+             data.authorName is string && data.authorName.size() > 0 && data.authorName.size() <= 100 &&
+             data.authorUID is string && data.authorUID.size() <= 128 &&
+             data.authorPhotoUrl is string && data.authorPhotoUrl.size() <= 1000 &&
+             data.message is string && data.message.size() > 0 && data.message.size() <= 10000 &&
+             data.category in ['General', 'Announcement', 'Idea', 'Help Needed'] &&
+             data.likesCount is int && data.likesCount >= 0 &&
+             data.likes is list && data.likes.size() <= 1000;
+    }
+
+    // Helper: Validation blueprint for Tasks
+    function isValidTask(data) {
+      return hasExactKeys(data, ['title', 'description', 'location', 'date', 'time', 'spotsTotal', 'spotsFilled', 'creatorId', 'creatorName', 'createdAt'], 10) &&
+             data.title is string && data.title.size() > 0 && data.title.size() <= 200 &&
+             data.description is string && data.description.size() > 0 && data.description.size() <= 5000 &&
+             data.location is string && data.location.size() > 0 && data.location.size() <= 500 &&
+             data.date is string && data.date.size() > 0 && data.date.size() <= 100 &&
+             data.time is string && data.time.size() > 0 && data.time.size() <= 100 &&
+             data.spotsTotal is int && data.spotsTotal >= 1 && data.spotsTotal <= 1000 &&
+             data.spotsFilled is int && data.spotsFilled >= 0 &&
+             data.creatorId is string && data.creatorId.size() <= 128 &&
+             data.creatorName is string && data.creatorName.size() > 0 && data.creatorName.size() <= 100;
+    }
+
+    // Helper: Validation blueprint for Signup Registry
+    function isValidTaskSignup(data) {
+      return hasExactKeys(data, ['userId', 'userName', 'userEmail', 'signedUpAt'], 4) &&
+             data.userId is string && data.userId.size() <= 128 &&
+             data.userName is string && data.userName.size() > 0 && data.userName.size() <= 100 &&
+             data.userEmail is string && data.userEmail.size() > 0 && data.userEmail.size() <= 200;
+    }
+
+    // COLLECTION: Posts
+    match /posts/{postId} {
+      allow get: if isValidId(postId);
+      allow list: if true;
+
+      allow create: if isSignedIn() &&
+                       isValidId(postId) &&
+                       isValidPost(incoming()) &&
+                       incoming().authorUID == request.auth.uid &&
+                       incoming().createdAt == request.time &&
+                       incoming().likesCount == 0 &&
+                       incoming().likes.size() == 0;
+
+      allow update: if isSignedIn() &&
+                       isValidId(postId) &&
+                       isValidPost(incoming()) &&
+                       incoming().createdAt == existing().createdAt &&
+                       incoming().authorUID == existing().authorUID &&
+                       (
+                         // Action 1: Toggle Like (increment/decrement counter)
+                         (incoming().diff(existing()).affectedKeys().hasOnly(['likes', 'likesCount'])) ||
+                         // Action 2: Edit message text or category
+                         (existing().authorUID == request.auth.uid && incoming().diff(existing()).affectedKeys().hasOnly(['message', 'category', 'authorName', 'authorPhotoUrl']))
+                       );
+
+      allow delete: if isSignedIn() &&
+                       isValidId(postId) &&
+                       existing().authorUID == request.auth.uid;
+    }
+
+    // COLLECTION: Tasks
+    match /tasks/{taskId} {
+      allow get: if isValidId(taskId);
+      allow list: if true;
+
+      allow create: if isSignedIn() &&
+                       isValidId(taskId) &&
+                       isValidTask(incoming()) &&
+                       incoming().creatorId == request.auth.uid &&
+                       incoming().createdAt == request.time &&
+                       incoming().spotsFilled == 0;
+
+      allow update: if isSignedIn() &&
+                       isValidId(taskId) &&
+                       isValidTask(incoming()) &&
+                       incoming().createdAt == existing().createdAt &&
+                       incoming().creatorId == existing().creatorId &&
+                       (
+                         // Action 1: Modify spot fills count (upon user signup/withdrawal)
+                         (incoming().diff(existing()).affectedKeys().hasOnly(['spotsFilled'])) ||
+                         // Action 2: Edit task specifications
+                         (existing().creatorId == request.auth.uid && incoming().diff(existing()).affectedKeys().hasOnly(['title', 'description', 'location', 'date', 'time', 'spotsTotal']))
+                       );
+
+      allow delete: if isSignedIn() &&
+                       isValidId(taskId) &&
+                       existing().creatorId == request.auth.uid;
+
+      // SUB-COLLECTION: Signups under Tasks
+      match /signups/{userId} {
+        allow get: if isValidId(taskId) && isValidId(userId);
+        allow list: if isValidId(taskId);
+
+        allow create: if isSignedIn() &&
+                         isValidId(taskId) &&
+                         isValidId(userId) &&
+                         userId == request.auth.uid &&
+                         isValidTaskSignup(incoming()) &&
+                         incoming().userId == request.auth.uid &&
+                         incoming().signedUpAt == request.time &&
+                         exists(/databases/$(database)/documents/tasks/$(taskId));
+
+        allow delete: if isSignedIn() &&
+                         isValidId(taskId) &&
+                         isValidId(userId) &&
+                         userId == request.auth.uid;
+      }
+    }
+
+    // COLLECTION: Members
+    match /members/{uid} {
+      allow get, list: if true;
+      allow create, update, delete: if true;
+    }
+
+    // COLLECTION: Resources
+    match /resources/{resourceId} {
+      allow get, list: if true;
+      allow create: if isSignedIn();
+      allow update, delete: if isSignedIn() && (existing().creatorId == request.auth.uid || (request.auth.token.keys().contains('email') && request.auth.token.email == 'sallumceeljale@gmail.com'));
+    }
+
+    // COLLECTION: Hours Logs
+    match /hours_logs/{logId} {
+      allow get, list: if true;
+      allow create: if isSignedIn();
+      allow update, delete: if isSignedIn() && (existing().userId == request.auth.uid || (request.auth.token.keys().contains('email') && request.auth.token.email == 'sallumceeljale@gmail.com'));
+    }
+  }
+}
