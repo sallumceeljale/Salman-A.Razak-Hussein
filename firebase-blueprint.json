@@ -1,207 +1,199 @@
 {
   "entities": {
-    "Post": {
-      "title": "Post",
-      "description": "A message or announcement shared on the volunteer team bulletin board.",
-      "type": "object",
-      "properties": {
-        "authorName": {
-          "type": "string",
-          "description": "The displayed name of the author."
-        },
-        "authorUID": {
-          "type": "string",
-          "description": "The Firebase Auth UID of the author."
-        },
-        "authorPhotoUrl": {
-          "type": "string",
-          "description": "Profile picture URL from Google."
-        },
-        "message": {
-          "type": "string",
-          "description": "The posting content or message "
-        },
-        "category": {
-          "type": "string",
-          "enum": ["General", "Announcement", "Idea", "Help Needed"],
-          "description": "Category tag for grouping messages."
-        },
-        "createdAt": {
-          "type": "string",
-          "format": "date-time",
-          "description": "Creation timestamp."
-        },
-        "likesCount": {
-          "type": "integer",
-          "description": "Number of reactions or likes."
-        },
-        "likes": {
-          "type": "array",
-          "description": "List of user UIDs who liked this post."
-        }
-      },
-      "required": ["authorName", "authorUID", "message", "category", "createdAt", "likesCount", "likes"]
-    },
-    "Task": {
-      "title": "Task",
-      "description": "A volunteering task or event that team members can sign up for.",
-      "type": "object",
-      "properties": {
-        "title": {
-          "type": "string",
-          "description": "Title of the volunteering task."
-        },
-        "description": {
-          "type": "string",
-          "description": "Detailed description of the task."
-        },
-        "location": {
-          "type": "string",
-          "description": "Where the volunteering occurs."
-        },
-        "date": {
-          "type": "string",
-          "description": "Calendar date of the event."
-        },
-        "time": {
-          "type": "string",
-          "description": "Time duration of the event."
-        },
-        "spotsTotal": {
-          "type": "integer",
-          "description": "Total spots available for volunteering."
-        },
-        "spotsFilled": {
-          "type": "integer",
-          "description": "Count of filled volunteer slots."
-        },
-        "creatorId": {
-          "type": "string",
-          "description": "The UID of the task creator."
-        },
-        "creatorName": {
-          "type": "string",
-          "description": "The name of the task creator."
-        },
-        "createdAt": {
-          "type": "string",
-          "format": "date-time",
-          "description": "Timestamp of creation."
-        }
-      },
-      "required": ["title", "description", "location", "date", "time", "spotsTotal", "spotsFilled", "creatorId", "creatorName", "createdAt"]
-    },
-    "TaskSignup": {
-      "title": "TaskSignup",
-      "description": "A signup record representing a user joining a task.",
-      "type": "object",
-      "properties": {
-        "userId": {
-          "type": "string",
-          "description": "The UID of the signing up user."
-        },
-        "userName": {
-          "type": "string",
-          "description": "The displayed name of the volunteer."
-        },
-        "userEmail": {
-          "type": "string",
-          "description": "Email address of the volunteer."
-        },
-        "signedUpAt": {
-          "type": "string",
-          "format": "date-time",
-          "description": "Timestamp when joined."
-        }
-      },
-      "required": ["userId", "userName", "userEmail", "signedUpAt"]
-    },
     "Member": {
       "title": "Member",
-      "description": "A student or school volunteer who joined the team.",
+      "description": "Private member record with membership status and assigned role.",
       "type": "object",
       "properties": {
-        "uid": {
-          "type": "string",
-          "description": "Unique user ID of the member."
-        },
-        "name": {
-          "type": "string",
-          "description": "Name of the volunteer."
-        },
-        "email": {
-          "type": "string",
-          "description": "Email address of the volunteer."
-        },
-        "photoURL": {
-          "type": "string",
-          "description": "Profile picture URL."
-        },
-        "joinedAt": {
-          "type": "string",
-          "format": "date-time",
-          "description": "When the member first logged in."
-        }
+        "uid": { "type": "string" },
+        "email": { "type": "string" },
+        "displayName": { "type": "string" },
+        "photoURL": { "type": "string" },
+        "role": { "type": "string", "enum": ["member", "mentor", "coordinator", "admin"] },
+        "status": { "type": "string", "enum": ["pending", "active", "suspended", "rejected"] },
+        "bio": { "type": "string" },
+        "skills": { "type": "array" },
+        "interests": { "type": "array" },
+        "region": { "type": "string" },
+        "directoryVisible": { "type": "boolean" },
+        "totalApprovedMinutes": { "type": "integer" },
+        "joinedAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" },
+        "applicationNotes": { "type": "string" }
       },
-      "required": ["uid", "name", "email", "joinedAt"]
+      "required": ["uid", "email", "displayName", "role", "status", "directoryVisible", "joinedAt"]
+    },
+    "PublicMemberProfile": {
+      "title": "PublicMemberProfile",
+      "description": "Public or shared directory profile for active members.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "displayName": { "type": "string" },
+        "photoURL": { "type": "string" },
+        "role": { "type": "string", "enum": ["member", "mentor", "coordinator", "admin"] },
+        "status": { "type": "string", "enum": ["pending", "active", "suspended", "rejected"] },
+        "headline": { "type": "string" },
+        "bio": { "type": "string" },
+        "skills": { "type": "array" },
+        "interests": { "type": "array" },
+        "region": { "type": "string" },
+        "directoryVisible": { "type": "boolean" },
+        "hasCrown": { "type": "boolean" },
+        "customBadge": { "type": "string" },
+        "totalApprovedMinutes": { "type": "integer" },
+        "joinedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "displayName", "directoryVisible", "joinedAt"]
+    },
+    "Post": {
+      "title": "Post",
+      "description": "Bulletin message or announcement shared within the team.",
+      "type": "object",
+      "properties": {
+        "authorName": { "type": "string" },
+        "authorUID": { "type": "string" },
+        "authorPhotoUrl": { "type": "string" },
+        "authorRole": { "type": "string", "enum": ["member", "mentor", "coordinator", "admin"] },
+        "message": { "type": "string" },
+        "category": { "type": "string", "enum": ["General", "Announcement", "Idea", "Help Needed"] },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "likesCount": { "type": "integer" },
+        "isAnnouncement": { "type": "boolean" }
+      },
+      "required": ["authorName", "authorUID", "message", "category", "createdAt", "likesCount"]
+    },
+    "PostLike": {
+      "title": "PostLike",
+      "description": "Reaction record for a post.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "createdAt"]
+    },
+    "Activity": {
+      "title": "Activity",
+      "description": "Volunteering opportunity or event created by team coordinators.",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string" },
+        "description": { "type": "string" },
+        "location": { "type": "string" },
+        "meetingLink": { "type": "string" },
+        "startsAt": { "type": "string" },
+        "endsAt": { "type": "string" },
+        "timeZone": { "type": "string" },
+        "deliveryMode": { "type": "string", "enum": ["online", "in-person", "virtual", "hybrid"] },
+        "capacity": { "type": "integer" },
+        "filledSpots": { "type": "integer" },
+        "status": { "type": "string", "enum": ["draft", "published", "full", "completed", "cancelled"] },
+        "creatorId": { "type": "string" },
+        "creatorName": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["title", "description", "location", "startsAt", "endsAt", "timeZone", "deliveryMode", "capacity", "filledSpots", "status", "creatorId", "createdAt"]
+    },
+    "ActivitySignup": {
+      "title": "ActivitySignup",
+      "description": "Member signup under an activity with private email isolation.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "userName": { "type": "string" },
+        "signedUpAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "userName", "signedUpAt"]
     },
     "Resource": {
       "title": "Resource",
-      "description": "Shared educational materials or resources submitted by volunteers.",
+      "description": "Educational study material or guide with review status workflow.",
       "type": "object",
       "properties": {
         "title": { "type": "string" },
         "description": { "type": "string" },
         "category": { "type": "string", "enum": ["Study Aid", "Worksheets", "Volunteering Guide", "Event Template", "Educational Link", "Other"] },
         "url": { "type": "string" },
+        "status": { "type": "string", "enum": ["pending", "approved", "rejected", "removed"] },
         "creatorId": { "type": "string" },
         "creatorName": { "type": "string" },
-        "creatorRole": { "type": "string" },
-        "createdAt": { "type": "string", "format": "date-time" }
+        "submittedAt": { "type": "string", "format": "date-time" },
+        "reviewedBy": { "type": "string" },
+        "reviewedAt": { "type": "string", "format": "date-time" }
       },
-      "required": ["title", "description", "category", "url", "creatorId", "creatorName", "createdAt"]
+      "required": ["title", "description", "category", "url", "status", "creatorId", "creatorName", "submittedAt"]
     },
     "VolunteerHourLog": {
       "title": "VolunteerHourLog",
-      "description": "Recorded volunteer activity logs tracking names, roles, hours, and description of duty.",
+      "description": "Recorded volunteer activity log tracking integer minutes and review status.",
       "type": "object",
       "properties": {
         "userId": { "type": "string" },
         "userName": { "type": "string" },
-        "userEmail": { "type": "string" },
         "userPhotoURL": { "type": "string" },
-        "hours": { "type": "integer" },
-        "date": { "type": "string" },
+        "minutes": { "type": "integer" },
+        "activityDate": { "type": "string" },
+        "activityType": { "type": "string" },
         "description": { "type": "string" },
-        "createdAt": { "type": "string", "format": "date-time" }
+        "taskId": { "type": "string" },
+        "evidence": { "type": "string" },
+        "status": { "type": "string", "enum": ["pending", "approved", "rejected"] },
+        "submittedAt": { "type": "string", "format": "date-time" },
+        "reviewedBy": { "type": "string" },
+        "reviewedAt": { "type": "string", "format": "date-time" },
+        "reviewNote": { "type": "string" }
       },
-      "required": ["userId", "userName", "userEmail", "hours", "date", "description", "createdAt"]
+      "required": ["userId", "userName", "minutes", "activityDate", "activityType", "description", "status", "submittedAt"]
+    },
+    "Setting": {
+      "title": "Setting",
+      "description": "Global application branding settings like team logo and banner.",
+      "type": "object",
+      "properties": {
+        "teamLogo": { "type": "string" },
+        "wideIdentityBanner": { "type": "string" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      }
     }
   },
   "firestore": {
-    "/posts/{postId}": {
-      "schema": "Post",
-      "description": "Bulletin board posts collection"
-    },
-    "/tasks/{taskId}": {
-      "schema": "Task",
-      "description": "Volunteering tasks and events collection"
-    },
-    "/tasks/{taskId}/signups/{userId}": {
-      "schema": "TaskSignup",
-      "description": "Volunteer signup records under each task"
-    },
     "/members/{uid}": {
       "schema": "Member",
-      "description": "Volunteers who have joined the community"
+      "description": "Private member profiles with role and status"
+    },
+    "/public_profiles/{uid}": {
+      "schema": "PublicMemberProfile",
+      "description": "Public directory safe profiles"
+    },
+    "/posts/{postId}": {
+      "schema": "Post",
+      "description": "Bulletin board posts"
+    },
+    "/posts/{postId}/likes/{uid}": {
+      "schema": "PostLike",
+      "description": "Reactions subcollection on posts"
+    },
+    "/activities/{activityId}": {
+      "schema": "Activity",
+      "description": "Volunteering activities and events"
+    },
+    "/activities/{activityId}/signups/{userId}": {
+      "schema": "ActivitySignup",
+      "description": "Member signups under activities"
     },
     "/resources/{resourceId}": {
       "schema": "Resource",
-      "description": "Collaborative resource bank documents"
+      "description": "Curated educational resources and study aids"
     },
     "/hours_logs/{logId}": {
       "schema": "VolunteerHourLog",
-      "description": "Logs tracking volunteered student hours"
+      "description": "Logged volunteer minutes awaiting coordinator approval"
+    },
+    "/settings/{settingId}": {
+      "schema": "Setting",
+      "description": "Application branding and system configurations"
     }
   }
 }

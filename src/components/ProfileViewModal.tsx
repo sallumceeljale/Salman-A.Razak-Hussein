@@ -1,8 +1,9 @@
 import React from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { X, Award, Crown, Calendar, Sparkles, Mail, ShieldCheck, Heart } from 'lucide-react';
-import { Post } from '../types';
+import { Post, VolunteerHourLog } from '../types';
 import { getMemberBadge } from '../utils/badge';
+import { getHighResPhotoUrl, isLeaderEmail } from '../utils/leader';
 import LeaderImageUploader from './LeaderImageUploader';
 
 interface MemberData {
@@ -15,18 +16,6 @@ interface MemberData {
   customBadge?: string;
   joinedAt?: any;
   linkedinURL?: string;
-}
-
-interface VolunteerHourLog {
-  id: string;
-  userId: string;
-  userName: string;
-  userEmail: string;
-  userPhotoURL: string;
-  hours: number;
-  description: string;
-  category: string;
-  date: any;
 }
 
 interface ProfileViewModalProps {
@@ -50,20 +39,26 @@ export default function ProfileViewModal({
 }: ProfileViewModalProps) {
   if (!member) return null;
 
-  const isLeader = member.email?.toLowerCase() === 'sallumceeljale@gmail.com';
+  const isLeader = isLeaderEmail(member.email);
   
-  // Calculate member's real-time statistics
-  const memberLogs = logs.filter(log => log.userEmail?.toLowerCase() === member.email?.toLowerCase() || log.userId === member.uid);
-  const totalHours = memberLogs.reduce((sum, log) => sum + log.hours, 0);
-  const totalContributions = memberLogs.length;
+  // Calculate member's real-time statistics (approved logs only)
+  const memberApprovedLogs = logs.filter(log => (log.userEmail?.toLowerCase() === member.email?.toLowerCase() || log.userId === member.uid) && log.status === 'approved');
+  const totalApprovedMinutes = memberApprovedLogs.reduce((sum, log) => {
+    const mins = typeof log.minutes === 'number' ? log.minutes : Math.round(Number(log.hours || 0) * 60);
+    return sum + mins;
+  }, 0);
+  const totalHours = totalApprovedMinutes / 60;
+  const totalContributions = memberApprovedLogs.length;
 
   // Calculate dynamic automated badge
-  const autoLogsFormat = memberLogs.map(l => ({
+  const autoLogsFormat = memberApprovedLogs.map(l => ({
     id: l.id,
     userId: member.uid, // Map key correctly
     userName: l.userName,
     userEmail: l.userEmail,
-    hours: l.hours,
+    hours: typeof l.hours === 'number' ? l.hours : (l.minutes ? l.minutes / 60 : 0),
+    minutes: typeof l.minutes === 'number' ? l.minutes : Math.round(Number(l.hours || 0) * 60),
+    status: 'approved',
     description: l.description,
     createdAt: new Date(),
     date: l.date
@@ -146,7 +141,7 @@ export default function ProfileViewModal({
                   <div className="w-20 h-20 rounded-2xl overflow-hidden bg-slate-100 ring-4 ring-white shadow-md flex items-center justify-center">
                     <LeaderImageUploader
                       currentUserEmail={currentUserEmail}
-                      currentImageSrc={member.photoURL || defaultAvatar}
+                      currentImageSrc={getHighResPhotoUrl(member.photoURL) || defaultAvatar}
                       altText={member.name}
                       onImageUploaded={(base64) => onUpdateMemberPhoto?.(member.uid, base64)}
                       typeLabel="Profile Photo"
@@ -223,7 +218,7 @@ export default function ProfileViewModal({
                       <Mail className="w-3.5 h-3.5 text-slate-400" />
                     </div>
                     <div className="truncate">
-                      <p className="text-[9px] font-black uppercase text-slate-450 leading-none tracking-wider">Verified Contact</p>
+                      <p className="text-[9px] font-black uppercase text-slate-450 leading-none tracking-wider">Member Email</p>
                       <p className="text-xs text-slate-700 font-semibold truncate mt-0.5">{member.email}</p>
                     </div>
                   </div>
@@ -280,7 +275,7 @@ export default function ProfileViewModal({
             {/* Footer with closed message */}
             <div className="p-3.5 bg-slate-50 border-t border-slate-100 text-center">
               <span className="text-[9px] text-slate-400 leading-none font-bold uppercase tracking-widest flex items-center justify-center gap-1.5">
-                🎓 Verified Scholars Volunteer Team Profile
+                🎓 Scholars Volunteer Team Member Profile
               </span>
             </div>
           </motion.div>

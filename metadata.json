@@ -1,6 +1,6 @@
 {
-  "name": "Scholars Volunteer Team",
-  "description": "A global collaborative board for scholars and student volunteers worldwide to share updates, manage tasks, coordinate volunteer events, and log service hours in real-time.",
+  "name": "SVT | Students Helping Students Everywhere",
+  "description": "SVT; The Scholars Volunteer Team connects students globally through volunteering, peer learning, academic support, and practical skill development.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

@@ -1,0 +1,51 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    
+    // 1. Site Public Assets (Team Logo, Banner, Founder & Leadership Portraits)
+    match /site-assets/{allPaths=**} {
+      // Anyone can read site assets
+      allow read: if true;
+      
+      // Only authorized administrators can upload or delete site assets
+      allow write: if request.auth != null && 
+                   (
+                     request.auth.token.email in ['sallumrazak@gmail.com', 'mohamedmaisara.2007@gmail.com', 'sallumceeljale@com', 'sallumceeljale@gmail.com'] ||
+                     request.auth.token.admin == true ||
+                     request.auth.token.role == 'admin'
+                   ) &&
+                   request.resource.size < 15 * 1024 * 1024 &&
+                   request.resource.contentType.matches('image/.*');
+      
+      allow delete: if request.auth != null &&
+                    (
+                      request.auth.token.email in ['sallumrazak@gmail.com', 'mohamedmaisara.2007@gmail.com', 'sallumceeljale@com', 'sallumceeljale@gmail.com'] ||
+                      request.auth.token.admin == true ||
+                      request.auth.token.role == 'admin'
+                    );
+    }
+
+    // 2. Profile Photos Storage
+    match /profile_photos/{userId}/{allPaths=**} {
+      // Anyone can read profile photos for roster and team display
+      allow read: if true;
+      
+      // Only the authenticated user can upload their own profile photo (<5MB image)
+      allow write: if request.auth != null && 
+                   request.auth.uid == userId && 
+                   request.resource.size < 5 * 1024 * 1024 &&
+                   request.resource.contentType.matches('image/.*');
+    }
+    
+    // 3. General assets / settings media
+    match /team_assets/{allPaths=**} {
+      allow read: if true;
+      allow write: if request.auth != null && 
+                   (
+                     request.auth.token.email in ['sallumrazak@gmail.com', 'mohamedmaisara.2007@gmail.com', 'sallumceeljale@com', 'sallumceeljale@gmail.com'] ||
+                     request.auth.token.admin == true ||
+                     request.auth.token.role == 'admin'
+                   );
+    }
+  }
+}

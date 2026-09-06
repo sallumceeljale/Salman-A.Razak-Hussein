@@ -2,167 +2,311 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // Default catch-all deny rule
+    // Default Deny All
     match /{document=**} {
       allow read, write: if false;
     }
 
-    // Helper: Checks if user is signed in
+    // Helper Functions
     function isSignedIn() {
       return request.auth != null;
     }
 
-    // Helper: Validates a generic ID format
     function isValidId(id) {
-      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+      return id is string && id.size() > 0 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
     }
 
-    // Helper: Shortcut for incoming document data
     function incoming() {
       return request.resource.data;
     }
 
-    // Helper: Shortcut for existing document data
     function existing() {
       return resource.data;
     }
 
-    // Helper: Check if incoming data has exactly specified keys
     function hasExactKeys(data, reqKeys, expectedSize) {
       return data.keys().hasAll(reqKeys) && data.keys().size() == expectedSize;
     }
 
-    // Helper: Validation blueprint for Posts
-    function isValidPost(data) {
-      return hasExactKeys(data, ['authorName', 'authorUID', 'authorPhotoUrl', 'message', 'category', 'createdAt', 'likesCount', 'likes'], 8) &&
-             data.authorName is string && data.authorName.size() > 0 && data.authorName.size() <= 100 &&
-             data.authorUID is string && data.authorUID.size() <= 128 &&
-             data.authorPhotoUrl is string && data.authorPhotoUrl.size() <= 1000 &&
-             data.message is string && data.message.size() > 0 && data.message.size() <= 10000 &&
-             data.category in ['General', 'Announcement', 'Idea', 'Help Needed'] &&
-             data.likesCount is int && data.likesCount >= 0 &&
-             data.likes is list && data.likes.size() <= 1000;
+    function isMember(uid) {
+      return isSignedIn() && exists(/databases/$(database)/documents/members/$(uid));
     }
 
-    // Helper: Validation blueprint for Tasks
-    function isValidTask(data) {
-      return hasExactKeys(data, ['title', 'description', 'location', 'date', 'time', 'spotsTotal', 'spotsFilled', 'creatorId', 'creatorName', 'createdAt'], 10) &&
-             data.title is string && data.title.size() > 0 && data.title.size() <= 200 &&
-             data.description is string && data.description.size() > 0 && data.description.size() <= 5000 &&
-             data.location is string && data.location.size() > 0 && data.location.size() <= 500 &&
-             data.date is string && data.date.size() > 0 && data.date.size() <= 100 &&
-             data.time is string && data.time.size() > 0 && data.time.size() <= 100 &&
-             data.spotsTotal is int && data.spotsTotal >= 1 && data.spotsTotal <= 1000 &&
-             data.spotsFilled is int && data.spotsFilled >= 0 &&
-             data.creatorId is string && data.creatorId.size() <= 128 &&
-             data.creatorName is string && data.creatorName.size() > 0 && data.creatorName.size() <= 100;
+    function getMemberData(uid) {
+      return get(/databases/$(database)/documents/members/$(uid)).data;
     }
 
-    // Helper: Validation blueprint for Signup Registry
-    function isValidTaskSignup(data) {
-      return hasExactKeys(data, ['userId', 'userName', 'userEmail', 'signedUpAt'], 4) &&
-             data.userId is string && data.userId.size() <= 128 &&
-             data.userName is string && data.userName.size() > 0 && data.userName.size() <= 100 &&
-             data.userEmail is string && data.userEmail.size() > 0 && data.userEmail.size() <= 200;
+    // Role & Custom Claims Authorization Helpers (strictly verified via Firebase ID token claims)
+    function isLeaderEmailDirect() {
+      return isSignedIn() && (
+        request.auth.token.email in [
+          'sallumrazak@gmail.com',
+          'mohamedmaisara.2007@gmail.com',
+          'sallumceeljale@com',
+          'sallumceeljale@gmail.com'
+        ]
+      );
     }
 
-    // COLLECTION: Posts
+    function isAdmin() {
+      return isSignedIn() && (
+        ('role' in request.auth.token && request.auth.token.role == 'admin') ||
+        ('admin' in request.auth.token && request.auth.token.admin == true) ||
+        isLeaderEmailDirect()
+      );
+    }
+
+    function isCoordinator() {
+      return isSignedIn() && (
+        isAdmin() ||
+        ('role' in request.auth.token && request.auth.token.role == 'coordinator') ||
+        ('coordinator' in request.auth.token && request.auth.token.coordinator == true)
+      );
+    }
+
+    function isCoordinatorOrAdmin() {
+      return isAdmin() || isCoordinator();
+    }
+
+    function isActiveMember() {
+      return isSignedIn() && (
+        isCoordinatorOrAdmin() ||
+        (exists(/databases/$(database)/documents/members/$(request.auth.uid)) &&
+         getMemberData(request.auth.uid).status == 'active')
+      );
+    }
+
+    // 1. Members Collection (Private identity, email, role, status, approval data, private hours)
+    match /members/{uid} {
+      // Ordinary members may ONLY get their own member document.
+      // Full collection list is strictly restricted to coordinators and admins.
+      allow get: if isSignedIn() && (request.auth.uid == uid || isCoordinatorOrAdmin());
+      allow list: if isCoordinatorOrAdmin();
+
+      // Creation: Only admins or pending self-registration with default 'member' role and 'pending' status
+      allow create: if isSignedIn() && (
+        isAdmin() ||
+        (
+          request.auth.uid == uid &&
+          incoming().uid == uid &&
+          incoming().status == 'pending' &&
+          incoming().role == 'member' &&
+          (!incoming().keys().contains('totalApprovedMinutes') || incoming().totalApprovedMinutes == 0) &&
+          (!incoming().keys().contains('hasCrown') || incoming().hasCrown == false)
+        )
+      );
+
+      // Updating:
+      // Only admins may approve, suspend, reject, or assign privileged roles and crowns.
+      // Individual users may only update non-privileged fields (e.g. displayName, photoURL, bio, skills, interests, region, headline, directoryVisible, customBadge, linkedinURL)
+      // and CANNOT change their own role, status, approval minutes, or crown.
+      allow update: if isSignedIn() && (
+        isAdmin() ||
+        (
+          request.auth.uid == uid &&
+          incoming().uid == existing().uid &&
+          incoming().email == existing().email &&
+          incoming().role == existing().role &&
+          incoming().status == existing().status &&
+          incoming().totalApprovedMinutes == existing().totalApprovedMinutes &&
+          (!existing().keys().contains('hasCrown') || incoming().hasCrown == existing().hasCrown) &&
+          incoming().joinedAt == existing().joinedAt
+        )
+      );
+
+      // Deletion: Only admins
+      allow delete: if isAdmin();
+    }
+
+    // 2. Public Profiles Collection (Public display name, approved photo URL, bio, skills, interests, region, public headline, directoryVisible)
+    match /publicProfiles/{uid} {
+      // Profile can be read if visible in directory and active, or if viewed by the owner or an admin/coordinator
+      allow get: if (resource.data.directoryVisible == true && resource.data.status == 'active') || (isSignedIn() && request.auth.uid == uid) || isCoordinatorOrAdmin();
+      allow list: if (resource.data.directoryVisible == true && resource.data.status == 'active') || isCoordinatorOrAdmin();
+
+      // Creation & Updates: Members can manage their own public profile (cannot escalate status or role)
+      allow create: if isSignedIn() && (request.auth.uid == uid || isCoordinatorOrAdmin());
+      allow update: if isSignedIn() && (
+        isCoordinatorOrAdmin() ||
+        (
+          request.auth.uid == uid &&
+          (!existing().keys().contains('role') || incoming().role == existing().role) &&
+          (!existing().keys().contains('status') || incoming().status == existing().status) &&
+          (!existing().keys().contains('totalApprovedMinutes') || incoming().totalApprovedMinutes == existing().totalApprovedMinutes) &&
+          (!existing().keys().contains('hasCrown') || incoming().hasCrown == existing().hasCrown)
+        )
+      );
+      allow delete: if isSignedIn() && (request.auth.uid == uid || isAdmin());
+    }
+
+    // 2b. Legacy Public Directory Profiles match alias
+    match /public_profiles/{uid} {
+      allow get, list: if (resource.data.directoryVisible == true && resource.data.status == 'active') || (isSignedIn() && request.auth.uid == uid) || isCoordinatorOrAdmin();
+      allow create, update: if isSignedIn() && request.auth.uid == uid;
+      allow delete: if isSignedIn() && (request.auth.uid == uid || isAdmin());
+    }
+
+    // 3. Bulletin Posts
     match /posts/{postId} {
-      allow get: if isValidId(postId);
-      allow list: if true;
+      allow get, list: if isActiveMember() || isCoordinatorOrAdmin();
 
-      allow create: if isSignedIn() &&
+      allow create: if isActiveMember() &&
                        isValidId(postId) &&
-                       isValidPost(incoming()) &&
                        incoming().authorUID == request.auth.uid &&
                        incoming().createdAt == request.time &&
                        incoming().likesCount == 0 &&
-                       incoming().likes.size() == 0;
+                       (incoming().category != 'Announcement' || isCoordinatorOrAdmin());
 
-      allow update: if isSignedIn() &&
+      allow update: if isActiveMember() &&
                        isValidId(postId) &&
-                       isValidPost(incoming()) &&
-                       incoming().createdAt == existing().createdAt &&
-                       incoming().authorUID == existing().authorUID &&
                        (
-                         // Action 1: Toggle Like (increment/decrement counter)
-                         (incoming().diff(existing()).affectedKeys().hasOnly(['likes', 'likesCount'])) ||
-                         // Action 2: Edit message text or category
-                         (existing().authorUID == request.auth.uid && incoming().diff(existing()).affectedKeys().hasOnly(['message', 'category', 'authorName', 'authorPhotoUrl']))
+                         // Case A: Post author edits message or category
+                         (existing().authorUID == request.auth.uid &&
+                          incoming().authorUID == existing().authorUID &&
+                          incoming().createdAt == existing().createdAt &&
+                          (incoming().category != 'Announcement' || isCoordinatorOrAdmin()))
+                         ||
+                         // Case B: Atomic like count update
+                         incoming().diff(existing()).affectedKeys().hasOnly(['likesCount'])
                        );
 
-      allow delete: if isSignedIn() &&
-                       isValidId(postId) &&
-                       existing().authorUID == request.auth.uid;
-    }
+      allow delete: if isSignedIn() && (
+        (exists(/databases/$(database)/documents/posts/$(postId)) && existing().authorUID == request.auth.uid) ||
+        isCoordinatorOrAdmin()
+      );
 
-    // COLLECTION: Tasks
-    match /tasks/{taskId} {
-      allow get: if isValidId(taskId);
-      allow list: if true;
-
-      allow create: if isSignedIn() &&
-                       isValidId(taskId) &&
-                       isValidTask(incoming()) &&
-                       incoming().creatorId == request.auth.uid &&
-                       incoming().createdAt == request.time &&
-                       incoming().spotsFilled == 0;
-
-      allow update: if isSignedIn() &&
-                       isValidId(taskId) &&
-                       isValidTask(incoming()) &&
-                       incoming().createdAt == existing().createdAt &&
-                       incoming().creatorId == existing().creatorId &&
-                       (
-                         // Action 1: Modify spot fills count (upon user signup/withdrawal)
-                         (incoming().diff(existing()).affectedKeys().hasOnly(['spotsFilled'])) ||
-                         // Action 2: Edit task specifications
-                         (existing().creatorId == request.auth.uid && incoming().diff(existing()).affectedKeys().hasOnly(['title', 'description', 'location', 'date', 'time', 'spotsTotal']))
-                       );
-
-      allow delete: if isSignedIn() &&
-                       isValidId(taskId) &&
-                       existing().creatorId == request.auth.uid;
-
-      // SUB-COLLECTION: Signups under Tasks
-      match /signups/{userId} {
-        allow get: if isValidId(taskId) && isValidId(userId);
-        allow list: if isValidId(taskId);
-
-        allow create: if isSignedIn() &&
-                         isValidId(taskId) &&
-                         isValidId(userId) &&
-                         userId == request.auth.uid &&
-                         isValidTaskSignup(incoming()) &&
-                         incoming().userId == request.auth.uid &&
-                         incoming().signedUpAt == request.time &&
-                         exists(/databases/$(database)/documents/tasks/$(taskId));
-
-        allow delete: if isSignedIn() &&
-                         isValidId(taskId) &&
-                         isValidId(userId) &&
-                         userId == request.auth.uid;
+      // Likes subcollection
+      match /likes/{userId} {
+        allow get, list: if isActiveMember() || isCoordinatorOrAdmin();
+        allow create: if isActiveMember() && request.auth.uid == userId && incoming().uid == request.auth.uid && incoming().createdAt == request.time;
+        allow delete: if isActiveMember() && request.auth.uid == userId;
       }
     }
 
-    // COLLECTION: Members
-    match /members/{uid} {
-      allow get, list: if true;
-      allow create, update, delete: if true;
+    // 4. Volunteering Activities & Opportunities
+    match /activities/{activityId} {
+      // Ordinary active members can read published activities; coordinators/admins can read all including drafts
+      allow get, list: if (isActiveMember() && resource.data.status != 'draft') || isCoordinatorOrAdmin();
+
+      // Only coordinators and administrators can create activities (requires timestamps for schedule)
+      allow create: if isCoordinatorOrAdmin() &&
+                       isValidId(activityId) &&
+                       incoming().creatorId == request.auth.uid &&
+                       incoming().createdAt == request.time &&
+                       incoming().startsAt is timestamp &&
+                       incoming().endsAt is timestamp;
+
+      // Only coordinators and administrators can update activities (members cannot edit any field)
+      allow update: if isCoordinatorOrAdmin();
+
+      // Only coordinators and administrators can delete activities
+      allow delete: if isCoordinatorOrAdmin();
+
+      // Signups subcollection (strictly isolates volunteer identity and protects emails)
+      match /signups/{userId} {
+        // Individual can view their own signup; coordinators/admins can view any
+        allow get: if isSignedIn() && (request.auth.uid == userId || isCoordinatorOrAdmin());
+
+        // Full roster listing is strictly restricted to coordinators and admins
+        allow list: if isCoordinatorOrAdmin();
+
+        // Active members can create only their own signup document, only for published activities, with server timestamp and approved fields
+        allow create: if isActiveMember() &&
+                         request.auth.uid == userId &&
+                         incoming().userId == request.auth.uid &&
+                         incoming().signedUpAt == request.time &&
+                         incoming().keys().hasOnly(['userId', 'signedUpAt']) &&
+                         exists(/databases/$(database)/documents/activities/$(activityId)) &&
+                         get(/databases/$(database)/documents/activities/$(activityId)).data.status == 'published';
+
+        // Members can withdraw their own signup; coordinators/admins can remove signups
+        allow delete: if isSignedIn() && (request.auth.uid == userId || isCoordinatorOrAdmin());
+
+        // Signups cannot be modified once created
+        allow update: if false;
+      }
     }
 
-    // COLLECTION: Resources
+    // 5. Shared Resource Bank
     match /resources/{resourceId} {
-      allow get, list: if true;
-      allow create: if isSignedIn();
-      allow update, delete: if isSignedIn() && (existing().creatorId == request.auth.uid || (request.auth.token.keys().contains('email') && request.auth.token.email == 'sallumceeljale@gmail.com'));
+      allow get, list: if isActiveMember() && (
+        resource.data.status == 'approved' ||
+        resource.data.creatorId == request.auth.uid ||
+        isCoordinatorOrAdmin()
+      );
+
+      allow create: if isActiveMember() &&
+                       isValidId(resourceId) &&
+                       incoming().creatorId == request.auth.uid &&
+                       incoming().status == 'pending' &&
+                       incoming().submittedAt == request.time &&
+                       incoming().url.matches('^https://.+');
+
+      allow update: if isCoordinatorOrAdmin() || (
+        isActiveMember() &&
+        existing().creatorId == request.auth.uid &&
+        existing().status == 'pending' &&
+        incoming().creatorId == request.auth.uid &&
+        incoming().status == 'pending' &&
+        incoming().url.matches('^https://.+')
+      );
+
+      allow delete: if isSignedIn() && (
+        (exists(/databases/$(database)/documents/resources/$(resourceId)) && existing().creatorId == request.auth.uid) ||
+        isCoordinatorOrAdmin()
+      );
     }
 
-    // COLLECTION: Hours Logs
+    // 6. Volunteer Hours Logs (Integer minutes, private records, coordinator/admin approval workflow)
     match /hours_logs/{logId} {
+      // Hour records are kept private: only the record owner or coordinator/admin can read/list
+      allow get: if isSignedIn() && (resource.data.userId == request.auth.uid || isCoordinatorOrAdmin());
+      allow list: if isSignedIn() && (resource.data.userId == request.auth.uid || isCoordinatorOrAdmin());
+
+      // Members may submit records only for themselves, as integer minutes, starting as pending
+      allow create: if isActiveMember() &&
+                       isValidId(logId) &&
+                       incoming().userId == request.auth.uid &&
+                       incoming().minutes is int &&
+                       incoming().minutes > 0 &&
+                       incoming().minutes <= 60000 &&
+                       (!incoming().keys().contains('hours')) &&
+                       incoming().status == 'pending' &&
+                       incoming().submittedAt == request.time;
+
+      // Only admin or coordinator claims may approve or reject submissions; members cannot edit/approve
+      allow update: if isCoordinatorOrAdmin() &&
+                       incoming().userId == existing().userId &&
+                       incoming().minutes == existing().minutes &&
+                       incoming().status in ['approved', 'rejected', 'pending'];
+
+      // Members may only delete their own pending records; coordinators/admins can delete any
+      allow delete: if isCoordinatorOrAdmin() || (
+        isSignedIn() &&
+        existing().userId == request.auth.uid &&
+        existing().status == 'pending'
+      );
+    }
+
+    // 7. Global Settings (Team Branding)
+    match /settings/{settingId} {
       allow get, list: if true;
-      allow create: if isSignedIn();
-      allow update, delete: if isSignedIn() && (existing().userId == request.auth.uid || (request.auth.token.keys().contains('email') && request.auth.token.email == 'sallumceeljale@gmail.com'));
+      allow create, update, delete: if isCoordinatorOrAdmin();
+    }
+
+    // 8. Public Site Assets (Verified Firebase Storage URLs for branding & leadership cards)
+    match /publicAssets/{assetKey} {
+      // Anyone can read public site assets to display logos, banners, and leadership photos
+      allow get, list: if true;
+
+      // Only authorized administrators can publish, replace, or delete public site assets
+      allow create, update, delete: if isAdmin() || (
+        isSignedIn() && (
+          request.auth.token.email in ['sallumrazak@gmail.com', 'mohamedmaisara.2007@gmail.com', 'sallumceeljale@com', 'sallumceeljale@gmail.com'] ||
+          request.auth.token.admin == true ||
+          request.auth.token.role == 'admin'
+        )
+      );
     }
   }
 }

@@ -4,7 +4,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { doc, updateDoc } from 'firebase/firestore';
 import { db, auth } from '../firebase';
 import LeaderImageUploader from './LeaderImageUploader';
-import { isLeaderEmail } from '../utils/leader';
+import { isLeaderEmail, getHighResPhotoUrl } from '../utils/leader';
 
 interface MemberData {
   uid: string;
@@ -19,18 +19,19 @@ interface MembersModalProps {
   isOpen: boolean;
   onClose: () => void;
   members: MemberData[];
+  isAdmin?: boolean;
   onViewProfile?: (uid: string) => void;
   onUpdateMemberPhoto?: (uid: string, base64: string) => void;
 }
 
-export default function MembersModal({ isOpen, onClose, members, onViewProfile, onUpdateMemberPhoto }: MembersModalProps) {
+export default function MembersModal({ isOpen, onClose, members, isAdmin = false, onViewProfile, onUpdateMemberPhoto }: MembersModalProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const [editingUid, setEditingUid] = useState<string | null>(null);
   const [editName, setEditName] = useState('');
   const [editPhotoURL, setEditPhotoURL] = useState('');
   const [editBadgeText, setEditBadgeText] = useState('');
 
-  const isLeader = isLeaderEmail(auth.currentUser?.email);
+  const canManage = isAdmin;
 
   // Sorter / Filter to find members by name or email
   const filteredMembers = members.filter(member => 
@@ -147,7 +148,7 @@ export default function MembersModal({ isOpen, onClose, members, onViewProfile, 
                             <div className="w-10 h-10 rounded-xl overflow-hidden bg-slate-200 border-2 border-white shadow-sm flex items-center justify-center">
                               <LeaderImageUploader
                                 currentUserEmail={auth.currentUser?.email}
-                                currentImageSrc={member.photoURL || defaultAvatar}
+                                currentImageSrc={getHighResPhotoUrl(member.photoURL) || defaultAvatar}
                                 altText={member.name}
                                 onImageUploaded={(base64) => onUpdateMemberPhoto?.(member.uid, base64)}
                                 typeLabel="Photo"
@@ -179,7 +180,7 @@ export default function MembersModal({ isOpen, onClose, members, onViewProfile, 
                             </div>
                             
                             <p className="text-[10px] text-slate-500 truncate leading-snug">
-                              {member.email === 'sallumceeljale@gmail.com' ? 'Project Founder & Leader' : (englishTag ? `(${englishTag})` : 'Active Member')}
+                              {isLeaderEmail(member.email) ? 'Project Founder & Leader' : (englishTag ? `(${englishTag})` : 'Active Member')}
                             </p>
 
                             {member.customBadge && !isEditingThis && (
@@ -192,7 +193,7 @@ export default function MembersModal({ isOpen, onClose, members, onViewProfile, 
                           </div>
 
                           {/* Leader Control Box */}
-                          {isLeader && (
+                          {canManage && (
                             <div className="flex items-center gap-1 shrink-0">
                               <button
                                 onClick={() => handleToggleCrown(member.uid, !!member.hasCrown)}
@@ -301,7 +302,7 @@ export default function MembersModal({ isOpen, onClose, members, onViewProfile, 
             <div className="p-4 bg-slate-50/80 border-t border-slate-100 flex items-center justify-between text-left">
               <p className="text-[10px] text-slate-400 font-medium leading-normal flex items-center gap-1.5">
                 <Shield className="w-3.5 h-3.5 text-indigo-500" />
-                <span>All registered committee members are verified and authenticated securely under the Scholars platform.</span>
+                <span>All registered committee members are authenticated securely under the Scholars platform.</span>
               </p>
               <button
                 onClick={onClose}

@@ -19,10 +19,14 @@ export function getMemberBadge(
 ): BadgeInfo | null {
   if (!memberId) return null;
 
-  // 1. Calculate total hours logged by this member
+  // 1. Calculate total approved hours logged by this member
   // Match by either userId or email if appropriate, but userId is the primary identifier
-  const memberLogs = logs.filter(log => log && log.userId === memberId);
-  const totalHours = memberLogs.reduce((sum, log) => sum + (Number(log.hours) || 0), 0);
+  const memberApprovedLogs = logs.filter(log => log && log.userId === memberId && log.status === 'approved');
+  const totalApprovedMinutes = memberApprovedLogs.reduce((sum, log) => {
+    const mins = typeof log.minutes === 'number' ? log.minutes : Math.round(Number(log.hours || 0) * 60);
+    return sum + mins;
+  }, 0);
+  const totalHours = totalApprovedMinutes / 60;
 
   // 2. Calculate number of bulletin posts created by this member
   const totalPosts = posts.filter(post => post && post.authorUID === memberId).length;
